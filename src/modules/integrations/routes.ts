@@ -1,53 +1,30 @@
 import type { FastifyInstance } from "fastify";
-import { z } from "zod";
 
-import { parseInput } from "../../lib/validation.js";
+import { requireUserToken } from "../../lib/auth.js";
 import { prisma } from "../../lib/prisma.js";
-
-const createIntegrationSchema = z.object({
-  provider: z.enum(["GOOGLE_WORKSPACE", "SLACK", "GITHUB", "CUSTOM"]),
-  name: z.string().min(1),
-  state: z.enum(["ACTIVE", "INACTIVE", "REQUESTED"]).default("INACTIVE"),
-  accountEmail: z.string().email().optional(),
-  scopes: z.array(z.string().min(1)).default([]),
-});
+import { syncUserFromToken } from "../../lib/user-context.js";
 
 export async function integrationRoutes(app: FastifyInstance) {
-  app.get("/integrations", async () => {
-    const integrations = await prisma.integration.findMany({
-      include: {
-        _count: {
-          select: {
-            bindings: true,
-          },
-        },
+  app.get("/integrations", async (request) => {
+    const token = await requireUserToken(request, ["read:providers"]);
+    const user = await syncUserFromToken(prisma, token);
+
+    const integrations = await prisma.connectedAccount.findMany({
+      where: {
+        userId: user.id,
       },
       orderBy: [
         {
-          state: "asc",
+          status: "asc",
         },
         {
-          name: "asc",
+          provider: "asc",
         },
       ],
     });
 
     return {
       data: integrations,
-    };
-  });
-
-  app.post("/integrations", async (request, reply) => {
-    const body = parseInput(createIntegrationSchema, request.body);
-
-    const integration = await prisma.integration.create({
-      data: body,
-    });
-
-    reply.code(201);
-
-    return {
-      data: integration,
     };
   });
 }

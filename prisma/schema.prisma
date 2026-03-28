@@ -7,49 +7,28 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserRole {
-  ADMIN
-  OPERATOR
-  REVIEWER
-}
-
-enum UserStatus {
-  ACTIVE
-  INVITED
-  DISABLED
-}
-
-enum AgentChannel {
-  OPENCLAW_API
-  CLI_SSH
-  WEBSOCKET_BRIDGE
-  TERMINAL
-}
-
-enum AgentStatus {
-  ACTIVE
-  INACTIVE
-  REVOKED
-}
-
-enum IntegrationProvider {
-  GOOGLE_WORKSPACE
+enum ConnectedAccountProvider {
+  GOOGLE
   SLACK
   GITHUB
   CUSTOM
 }
 
-enum IntegrationState {
-  ACTIVE
-  INACTIVE
-  REQUESTED
+enum ConnectedAccountStatus {
+  CONNECTED
+  PENDING
+  REVOKED
 }
 
-enum ApprovalStatus {
+enum LinkCodeStatus {
   PENDING
-  APPROVED
-  REJECTED
+  CLAIMED
   EXPIRED
+}
+
+enum BindingStatus {
+  ACTIVE
+  REVOKED
 }
 
 enum RiskLevel {
@@ -59,130 +38,165 @@ enum RiskLevel {
   CRITICAL
 }
 
-enum AuditSeverity {
-  INFO
-  WARNING
-  HIGH
-  IMMUTABLE_RECORD
+enum ActionRequestStatus {
+  PENDING
+  APPROVAL_REQUIRED
+  APPROVED
+  REJECTED
+  EXECUTED
+  FAILED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum AuditEventType {
+  LINK_CODE_CREATED
+  LINK_CODE_REDEEMED
+  LINK_CODE_EXPIRED
+  BINDING_CREATED
+  PROVIDER_CONNECTED
+  PROVIDER_REVOKED
+  ACTION_REQUESTED
+  APPROVAL_REQUESTED
+  APPROVAL_GRANTED
+  APPROVAL_REJECTED
+  ACTION_EXECUTED
+  ACTION_FAILED
 }
 
 model User {
-  id               String            @id @default(uuid()) @db.Uuid
-  email            String            @unique
-  name             String
-  role             UserRole          @default(OPERATOR)
-  status           UserStatus        @default(ACTIVE)
-  approvalRequests ApprovalRequest[] @relation("ApprovalRequester")
-  reviewedRequests ApprovalRequest[] @relation("ApprovalReviewer")
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id                String            @id @default(uuid()) @db.Uuid
+  auth0UserId       String            @unique
+  email             String?           @unique
+  name              String?
+  connectedAccounts ConnectedAccount[]
+  linkCodeClaims    LinkCode[]        @relation("LinkCodeClaimedByUser")
+  runtimeBindings   RuntimeBinding[]
+  actionRequests    ActionRequest[]
+  approvalsResolved Approval[]        @relation("ApprovalResolvedByUser")
+  auditLogs         AuditLog[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 }
 
-model Agent {
-  id               String            @id @default(uuid()) @db.Uuid
-  name             String
-  code             String            @unique
-  channel          AgentChannel
-  status           AgentStatus       @default(ACTIVE)
-  trustScore       Int?
-  linkedAt         DateTime          @default(now())
-  bindings         AgentBinding[]
-  approvalRequests ApprovalRequest[]
-  auditLogs        AuditLog[]
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+model ConnectedAccount {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  userId             String                   @db.Uuid
+  provider           ConnectedAccountProvider
+  providerAccountRef String?
+  status             ConnectedAccountStatus   @default(PENDING)
+  scopes             String[]                 @default([])
+  metadata           Json?
+  user               User                     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
 
-  @@index([status, linkedAt])
+  @@unique([userId, provider])
+  @@index([userId, status])
 }
 
-model Integration {
-  id           String              @id @default(uuid()) @db.Uuid
-  provider     IntegrationProvider
-  name         String
-  state        IntegrationState    @default(INACTIVE)
-  accountEmail String?
-  scopes       String[]            @default([])
-  lastSyncedAt DateTime?
-  metadata     Json?
-  bindings     AgentBinding[]
-  auditLogs    AuditLog[]
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
-
-  @@unique([provider, name])
-  @@index([state, provider])
-}
-
-model AgentBinding {
-  id            String       @id @default(uuid()) @db.Uuid
-  agentId       String       @db.Uuid
-  integrationId String?      @db.Uuid
-  channel       AgentChannel
-  identifier    String
-  status        AgentStatus  @default(ACTIVE)
-  linkedAt      DateTime     @default(now())
-  revokedAt     DateTime?
-  metadata      Json?
-  agent         Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  integration   Integration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-
-  @@index([agentId, status])
-  @@index([integrationId, status])
-}
-
-model ApprovalRequest {
+model LinkCode {
   id              String         @id @default(uuid()) @db.Uuid
-  agentId         String         @db.Uuid
-  requesterId     String?        @db.Uuid
-  reviewerId      String?        @db.Uuid
-  title           String
-  action          String
-  riskLevel       RiskLevel
-  status          ApprovalStatus @default(PENDING)
-  recipient       String?
-  subject         String?
-  body            String?
-  payload         Json?
-  transactionHash String?
-  region          String?
-  requestedAt     DateTime       @default(now())
-  expiresAt       DateTime?
-  reviewedAt      DateTime?
-  decisionNote    String?
-  agent           Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
-  requester       User?          @relation("ApprovalRequester", fields: [requesterId], references: [id], onDelete: SetNull)
-  reviewer        User?          @relation("ApprovalReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
-  auditLogs       AuditLog[]
+  code            String         @unique
+  runtimeName     String
+  agentId         String
+  sessionKey      String
+  channelName     String
+  channelUserRef  String
+  status          LinkCodeStatus @default(PENDING)
+  expiresAt       DateTime
+  claimedAt       DateTime?
+  claimedByUserId String?        @db.Uuid
+  bindingId       String?        @db.Uuid
+  metadata        Json?
+  claimedByUser   User?          @relation("LinkCodeClaimedByUser", fields: [claimedByUserId], references: [id], onDelete: SetNull)
+  binding         RuntimeBinding? @relation("LinkCodeBinding", fields: [bindingId], references: [id], onDelete: SetNull)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
-  @@index([status, requestedAt])
-  @@index([agentId, status])
+  @@index([status, expiresAt])
+  @@index([runtimeName, agentId, sessionKey])
+}
+
+model RuntimeBinding {
+  id             String          @id @default(uuid()) @db.Uuid
+  userId         String          @db.Uuid
+  runtimeName    String
+  agentId        String
+  sessionKey     String
+  channelName    String
+  channelUserRef String
+  status         BindingStatus   @default(ACTIVE)
+  linkedAt       DateTime        @default(now())
+  lastSeenAt     DateTime?
+  metadata       Json?
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  linkCodes      LinkCode[]      @relation("LinkCodeBinding")
+  actionRequests ActionRequest[]
+  auditLogs      AuditLog[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@unique([runtimeName, agentId, sessionKey, channelName, channelUserRef], map: "runtime_binding_identity_unique")
+  @@index([userId, status])
+  @@index([runtimeName, agentId, sessionKey])
+}
+
+model ActionRequest {
+  id            String              @id @default(uuid()) @db.Uuid
+  userId        String              @db.Uuid
+  bindingId     String              @db.Uuid
+  actionName    String
+  actionPayload Json
+  riskLevel     RiskLevel
+  status        ActionRequestStatus @default(PENDING)
+  resultSummary String?
+  errorMessage  String?
+  executedAt    DateTime?
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  binding       RuntimeBinding      @relation(fields: [bindingId], references: [id], onDelete: Cascade)
+  approval      Approval?
+  auditLogs     AuditLog[]
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  @@index([userId, status])
+  @@index([bindingId, createdAt])
+}
+
+model Approval {
+  id               String         @id @default(uuid()) @db.Uuid
+  actionRequestId  String         @unique @db.Uuid
+  status           ApprovalStatus @default(PENDING)
+  approvedByUserId String?        @db.Uuid
+  approvedAt       DateTime?
+  rejectedAt       DateTime?
+  rejectionReason  String?
+  actionRequest    ActionRequest  @relation(fields: [actionRequestId], references: [id], onDelete: Cascade)
+  approvedByUser   User?          @relation("ApprovalResolvedByUser", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@index([status, createdAt])
 }
 
 model AuditLog {
-  id                String           @id @default(uuid()) @db.Uuid
-  agentId           String?          @db.Uuid
-  integrationId     String?          @db.Uuid
-  approvalRequestId String?          @db.Uuid
-  action            String
-  actorLabel        String?
-  destination       String?
-  checksum          String?
-  payloadSummary    String?
-  region            String?
-  severity          AuditSeverity    @default(INFO)
-  subject           String?
-  trustScore        Int?
-  metadata          Json?
-  recordedAt        DateTime         @default(now())
-  agent             Agent?           @relation(fields: [agentId], references: [id], onDelete: SetNull)
-  integration       Integration?     @relation(fields: [integrationId], references: [id], onDelete: SetNull)
-  approvalRequest   ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
-  createdAt         DateTime         @default(now())
+  id              String         @id @default(uuid()) @db.Uuid
+  userId          String?        @db.Uuid
+  bindingId       String?        @db.Uuid
+  actionRequestId String?        @db.Uuid
+  eventType       AuditEventType
+  eventPayload    Json?
+  user            User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  binding         RuntimeBinding? @relation(fields: [bindingId], references: [id], onDelete: SetNull)
+  actionRequest   ActionRequest? @relation(fields: [actionRequestId], references: [id], onDelete: SetNull)
+  createdAt       DateTime       @default(now())
 
-  @@index([recordedAt])
-  @@index([severity, recordedAt])
+  @@index([userId, createdAt])
+  @@index([eventType, createdAt])
 }

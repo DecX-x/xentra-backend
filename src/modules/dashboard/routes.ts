@@ -1,33 +1,52 @@
+import {
+  ApprovalStatus,
+  BindingStatus,
+  ConnectedAccountStatus,
+} from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 
+import { requireUserToken } from "../../lib/auth.js";
 import { prisma } from "../../lib/prisma.js";
+import { syncUserFromToken } from "../../lib/user-context.js";
 
 export async function dashboardRoutes(app: FastifyInstance) {
-  app.get("/dashboard/summary", async () => {
-    const [agents, integrations, pendingApprovals, auditLogs] =
+  app.get("/dashboard/summary", async (request) => {
+    const token = await requireUserToken(request, ["read:dashboard"]);
+    const user = await syncUserFromToken(prisma, token);
+
+    const [activeAgents, activeIntegrations, pendingApprovals, auditLogs] =
       await prisma.$transaction([
-        prisma.agent.count({
+        prisma.runtimeBinding.count({
           where: {
-            status: "ACTIVE",
+            status: BindingStatus.ACTIVE,
+            userId: user.id,
           },
         }),
-        prisma.integration.count({
+        prisma.connectedAccount.count({
           where: {
-            state: "ACTIVE",
+            status: ConnectedAccountStatus.CONNECTED,
+            userId: user.id,
           },
         }),
-        prisma.approvalRequest.count({
+        prisma.approval.count({
           where: {
-            status: "PENDING",
+            actionRequest: {
+              userId: user.id,
+            },
+            status: ApprovalStatus.PENDING,
           },
         }),
-        prisma.auditLog.count(),
+        prisma.auditLog.count({
+          where: {
+            userId: user.id,
+          },
+        }),
       ]);
 
     return {
       data: {
-        activeAgents: agents,
-        activeIntegrations: integrations,
+        activeAgents,
+        activeIntegrations,
         pendingApprovals,
         auditLogs,
       },
