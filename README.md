@@ -1,6 +1,6 @@
 # Xentra Backend
 
-Plan 1 backend scaffold in a separate codebase.
+Backend scaffold in a separate codebase.
 
 ## Stack
 
@@ -14,6 +14,7 @@ Plan 1 backend scaffold in a separate codebase.
 - `npm install`
 - `npm run dev`
 - `npm run build`
+- `npm run db:push`
 - `npm run prisma:validate`
 - `npm run prisma:generate`
 
@@ -22,3 +23,8 @@ Plan 1 backend scaffold in a separate codebase.
 - `GET /`
 - `GET /health`
 - `GET /health/ready`
+- `GET /api/v1/dashboard/summary`
+- `GET /api/v1/agents`
+- `GET /api/v1/integrations`
+- `GET /api/v1/approvals`
+- `GET /api/v1/audit-logs`

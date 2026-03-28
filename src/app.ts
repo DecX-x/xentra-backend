@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 
+import { apiRoutes } from "./modules/index.js";
 import { healthRoutes } from "./routes/health.js";
 
 export function buildApp() {
@@ -15,6 +16,7 @@ export function buildApp() {
   });
 
   app.register(healthRoutes);
+  app.register(apiRoutes, { prefix: "/api/v1" });
 
   return app;
 }

@@ -6,3 +6,183 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+enum UserRole {
+  ADMIN
+  OPERATOR
+  REVIEWER
+}
+
+enum UserStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+
+enum AgentChannel {
+  OPENCLAW_API
+  CLI_SSH
+  WEBSOCKET_BRIDGE
+  TERMINAL
+}
+
+enum AgentStatus {
+  ACTIVE
+  INACTIVE
+  REVOKED
+}
+
+enum IntegrationProvider {
+  GOOGLE_WORKSPACE
+  SLACK
+  GITHUB
+  CUSTOM
+}
+
+enum IntegrationState {
+  ACTIVE
+  INACTIVE
+  REQUESTED
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum AuditSeverity {
+  INFO
+  WARNING
+  HIGH
+  IMMUTABLE_RECORD
+}
+
+model User {
+  id               String            @id @default(uuid()) @db.Uuid
+  email            String            @unique
+  name             String
+  role             UserRole          @default(OPERATOR)
+  status           UserStatus        @default(ACTIVE)
+  approvalRequests ApprovalRequest[] @relation("ApprovalRequester")
+  reviewedRequests ApprovalRequest[] @relation("ApprovalReviewer")
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+}
+
+model Agent {
+  id               String            @id @default(uuid()) @db.Uuid
+  name             String
+  code             String            @unique
+  channel          AgentChannel
+  status           AgentStatus       @default(ACTIVE)
+  trustScore       Int?
+  linkedAt         DateTime          @default(now())
+  bindings         AgentBinding[]
+  approvalRequests ApprovalRequest[]
+  auditLogs        AuditLog[]
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  @@index([status, linkedAt])
+}
+
+model Integration {
+  id           String              @id @default(uuid()) @db.Uuid
+  provider     IntegrationProvider
+  name         String
+  state        IntegrationState    @default(INACTIVE)
+  accountEmail String?
+  scopes       String[]            @default([])
+  lastSyncedAt DateTime?
+  metadata     Json?
+  bindings     AgentBinding[]
+  auditLogs    AuditLog[]
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  @@unique([provider, name])
+  @@index([state, provider])
+}
+
+model AgentBinding {
+  id            String       @id @default(uuid()) @db.Uuid
+  agentId       String       @db.Uuid
+  integrationId String?      @db.Uuid
+  channel       AgentChannel
+  identifier    String
+  status        AgentStatus  @default(ACTIVE)
+  linkedAt      DateTime     @default(now())
+  revokedAt     DateTime?
+  metadata      Json?
+  agent         Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  integration   Integration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  @@index([agentId, status])
+  @@index([integrationId, status])
+}
+
+model ApprovalRequest {
+  id              String         @id @default(uuid()) @db.Uuid
+  agentId         String         @db.Uuid
+  requesterId     String?        @db.Uuid
+  reviewerId      String?        @db.Uuid
+  title           String
+  action          String
+  riskLevel       RiskLevel
+  status          ApprovalStatus @default(PENDING)
+  recipient       String?
+  subject         String?
+  body            String?
+  payload         Json?
+  transactionHash String?
+  region          String?
+  requestedAt     DateTime       @default(now())
+  expiresAt       DateTime?
+  reviewedAt      DateTime?
+  decisionNote    String?
+  agent           Agent          @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  requester       User?          @relation("ApprovalRequester", fields: [requesterId], references: [id], onDelete: SetNull)
+  reviewer        User?          @relation("ApprovalReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  auditLogs       AuditLog[]
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  @@index([status, requestedAt])
+  @@index([agentId, status])
+}
+
+model AuditLog {
+  id                String           @id @default(uuid()) @db.Uuid
+  agentId           String?          @db.Uuid
+  integrationId     String?          @db.Uuid
+  approvalRequestId String?          @db.Uuid
+  action            String
+  actorLabel        String?
+  destination       String?
+  checksum          String?
+  payloadSummary    String?
+  region            String?
+  severity          AuditSeverity    @default(INFO)
+  subject           String?
+  trustScore        Int?
+  metadata          Json?
+  recordedAt        DateTime         @default(now())
+  agent             Agent?           @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  integration       Integration?     @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+  approvalRequest   ApprovalRequest? @relation(fields: [approvalRequestId], references: [id], onDelete: SetNull)
+  createdAt         DateTime         @default(now())
+
+  @@index([recordedAt])
+  @@index([severity, recordedAt])
+}
