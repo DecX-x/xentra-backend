@@ -18,6 +18,20 @@ Backend scaffold in a separate codebase.
 - `npm run prisma:validate`
 - `npm run prisma:generate`
 
+## Local Run
+
+1. Copy `.env.example` to `.env`.
+2. Fill `DATABASE_URL`.
+3. Run `npm install`.
+4. Run `npm run db:push`.
+5. Run `npm run dev`.
+
+## Docker
+
+1. Build image: `docker build -t xentra-backend .`
+2. Run container: `docker run --env-file .env -p 3001:3001 xentra-backend`
+3. Push schema separately before first use with `npm run db:push` or your migration workflow.
+
 ## Routes
 
 - `GET /`
