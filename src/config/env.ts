@@ -4,6 +4,9 @@ const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   HOST: z.string().min(1).default("0.0.0.0"),
   PORT: z.coerce.number().int().positive().default(3001),
+  OPENCLAW_BASE_URL: z.string().url().optional(),
+  OPENCLAW_API_KEY: z.string().min(1).optional(),
+  OPENCLAW_TIMEOUT_MS: z.coerce.number().int().positive().default(10000),
   DATABASE_URL: z
     .string()
     .min(1)
