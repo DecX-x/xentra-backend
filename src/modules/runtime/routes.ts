@@ -9,7 +9,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 
 import { env } from "../../config/env.js";
-import { requireServiceToken } from "../../lib/auth.js";
+import { issueRuntimeToken, requireRuntimeToken } from "../../lib/auth.js";
 import { AppError } from "../../lib/app-error.js";
 import { generateLinkCode, normalizeLinkCode } from "../../lib/link-code.js";
 import { classifyRiskLevel, requiresApproval } from "../../lib/policy.js";
@@ -86,7 +86,6 @@ async function createUniqueCode() {
 
 export async function runtimeRoutes(app: FastifyInstance) {
   app.post("/runtime/link-codes", async (request, reply) => {
-    await requireServiceToken(request, [["write:bindings"], ["bind:openclaw"]]);
     const body = parseInput(createLinkCodeSchema, request.body);
     const code = await createUniqueCode();
     const expiresAt = new Date(
@@ -132,7 +131,6 @@ export async function runtimeRoutes(app: FastifyInstance) {
   });
 
   app.post("/runtime/status", async (request) => {
-    await requireServiceToken(request, [["read:bindings"]]);
     const body = parseInput(runtimeStatusSchema, request.body);
 
     if (body.code) {
@@ -187,6 +185,18 @@ export async function runtimeRoutes(app: FastifyInstance) {
         data: {
           bindingId: linkCode.bindingId,
           linked: linkCode.status === LinkCodeStatus.CLAIMED,
+          runtimeToken:
+            linkCode.status === LinkCodeStatus.CLAIMED && linkCode.binding
+              ? await issueRuntimeToken({
+                  agentId: linkCode.binding.agentId,
+                  bindingId: linkCode.binding.id,
+                  channelName: linkCode.binding.channelName,
+                  channelUserRef: linkCode.binding.channelUserRef,
+                  runtimeName: linkCode.binding.runtimeName,
+                  sessionKey: linkCode.binding.sessionKey,
+                  userId: linkCode.binding.userId,
+                })
+              : undefined,
           status: linkCode.status.toLowerCase(),
           userId: linkCode.claimedByUserId,
         },
@@ -197,6 +207,19 @@ export async function runtimeRoutes(app: FastifyInstance) {
 
     if (!runtimeContext) {
       throw new AppError(400, "runtimeContext is required");
+    }
+
+    const runtimeToken = await requireRuntimeToken(request);
+
+    const matchesRuntimeIdentity =
+      runtimeToken.runtimeName === runtimeContext.runtimeName &&
+      runtimeToken.agentId === runtimeContext.agentId &&
+      runtimeToken.sessionKey === runtimeContext.sessionKey &&
+      runtimeToken.channelName === runtimeContext.channelName &&
+      runtimeToken.channelUserRef === runtimeContext.channelUserRef;
+
+    if (!matchesRuntimeIdentity) {
+      throw new AppError(403, "Runtime token does not match the provided runtime context");
     }
 
     const binding = await prisma.runtimeBinding.findUnique({
@@ -234,8 +257,19 @@ export async function runtimeRoutes(app: FastifyInstance) {
   });
 
   app.post("/runtime/execute", async (request) => {
-    await requireServiceToken(request, [["execute:actions"]]);
     const body = parseInput(executeRuntimeActionSchema, request.body);
+    const runtimeToken = await requireRuntimeToken(request);
+
+    const matchesRuntimeIdentity =
+      runtimeToken.runtimeName === body.runtimeContext.runtimeName &&
+      runtimeToken.agentId === body.runtimeContext.agentId &&
+      runtimeToken.sessionKey === body.runtimeContext.sessionKey &&
+      runtimeToken.channelName === body.runtimeContext.channelName &&
+      runtimeToken.channelUserRef === body.runtimeContext.channelUserRef;
+
+    if (!matchesRuntimeIdentity) {
+      throw new AppError(403, "Runtime token does not match the provided runtime context");
+    }
 
     const binding = await prisma.runtimeBinding.findUnique({
       where: {
@@ -243,7 +277,11 @@ export async function runtimeRoutes(app: FastifyInstance) {
       },
     });
 
-    if (!binding || binding.status !== BindingStatus.ACTIVE) {
+    if (
+      !binding ||
+      binding.status !== BindingStatus.ACTIVE ||
+      binding.id !== runtimeToken.bindingId
+    ) {
       return {
         message: "This agent runtime is not linked to an authenticated Xentra user.",
         status: "not_linked",

@@ -1,11 +1,20 @@
 import type { FastifyRequest } from "fastify";
-import { errors, createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+import {
+  errors,
+  createRemoteJWKSet,
+  jwtVerify,
+  SignJWT,
+  type JWTPayload,
+} from "jose";
 
 import { env } from "../config/env.js";
 import { AppError } from "./app-error.js";
 
 const issuer = `https://${env.AUTH0_DOMAIN}/`;
 const jwks = createRemoteJWKSet(new URL(".well-known/jwks.json", issuer));
+const runtimeTokenIssuer = "xentra-runtime";
+const runtimeTokenAudience = "xentra-runtime-api";
+const runtimeSecret = new TextEncoder().encode(env.XENTRA_RUNTIME_TOKEN_SECRET);
 
 export type AccessTokenClaims = JWTPayload & {
   email?: string;
@@ -14,6 +23,17 @@ export type AccessTokenClaims = JWTPayload & {
   permissions?: string[];
   scope?: string;
   sub: string;
+};
+
+export type RuntimeTokenClaims = JWTPayload & {
+  agentId: string;
+  bindingId: string;
+  channelName: string;
+  channelUserRef: string;
+  runtimeName: string;
+  sessionKey: string;
+  typ: "xentra-runtime";
+  userId: string;
 };
 
 function getBearerToken(request: FastifyRequest) {
@@ -133,4 +153,75 @@ export async function requireServiceToken(
   }
 
   return payload;
+}
+
+export async function issueRuntimeToken(claims: {
+  agentId: string;
+  bindingId: string;
+  channelName: string;
+  channelUserRef: string;
+  runtimeName: string;
+  sessionKey: string;
+  userId: string;
+}) {
+  return new SignJWT({
+    agentId: claims.agentId,
+    bindingId: claims.bindingId,
+    channelName: claims.channelName,
+    channelUserRef: claims.channelUserRef,
+    runtimeName: claims.runtimeName,
+    sessionKey: claims.sessionKey,
+    typ: "xentra-runtime",
+    userId: claims.userId,
+  })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(`runtime:${claims.bindingId}`)
+    .setIssuer(runtimeTokenIssuer)
+    .setAudience(runtimeTokenAudience)
+    .setIssuedAt()
+    .setExpirationTime(`${env.XENTRA_RUNTIME_TOKEN_TTL_SECONDS}s`)
+    .sign(runtimeSecret);
+}
+
+export async function requireRuntimeToken(request: FastifyRequest) {
+  const token = getBearerToken(request);
+
+  try {
+    const { payload } = await jwtVerify(token, runtimeSecret, {
+      audience: runtimeTokenAudience,
+      issuer: runtimeTokenIssuer,
+    });
+
+    const requiredStringClaims = [
+      "bindingId",
+      "userId",
+      "runtimeName",
+      "agentId",
+      "sessionKey",
+      "channelName",
+      "channelUserRef",
+    ] as const;
+
+    for (const claim of requiredStringClaims) {
+      if (typeof payload[claim] !== "string" || payload[claim].length === 0) {
+        throw new AppError(401, `Runtime token is missing claim: ${claim}`);
+      }
+    }
+
+    if (payload.typ !== "xentra-runtime") {
+      throw new AppError(401, "Runtime token type is invalid");
+    }
+
+    return payload as RuntimeTokenClaims;
+  } catch (error) {
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    if (error instanceof errors.JOSEError) {
+      throw new AppError(401, "Runtime token validation failed");
+    }
+
+    throw error;
+  }
 }

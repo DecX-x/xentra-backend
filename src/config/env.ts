@@ -9,6 +9,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(3001),
   AUTH0_DOMAIN: z.string().min(1),
   AUTH0_AUDIENCE: z.string().url(),
+  XENTRA_RUNTIME_TOKEN_SECRET: z.string().min(32),
+  XENTRA_RUNTIME_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(2_592_000),
   LINK_CODE_TTL_SECONDS: z.coerce.number().int().positive().default(600),
   DATABASE_URL: z
     .string()

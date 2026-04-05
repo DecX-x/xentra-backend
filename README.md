@@ -21,10 +21,19 @@ Backend scaffold in a separate codebase.
 ## Local Run
 
 1. Copy `.env.example` to `.env`.
-2. Fill `DATABASE_URL`, `AUTH0_DOMAIN`, and `AUTH0_AUDIENCE`.
+2. Fill `DATABASE_URL`, `AUTH0_DOMAIN`, `AUTH0_AUDIENCE`, and `XENTRA_RUNTIME_TOKEN_SECRET`.
 3. Run `npm install`.
 4. Run `npm run db:push`.
 5. Run `npm run dev`.
+
+## Runtime Auth Model
+
+- Human users authenticate in the web app with Auth0.
+- Agent runtimes do not need Auth0 credentials.
+- A runtime creates a short-lived link code through `POST /api/v1/runtime/link-codes`.
+- The human redeems that code in the web app.
+- The runtime polls `POST /api/v1/runtime/status` with the code and receives a Xentra-issued `runtimeToken`.
+- The runtime then uses `Authorization: Bearer <runtimeToken>` for `POST /api/v1/runtime/execute`.
 
 ## Docker
 
