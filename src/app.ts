@@ -28,8 +28,16 @@ export function buildApp() {
     });
   });
 
-  app.setErrorHandler((error, _request, reply) => {
+  app.setErrorHandler((error, request, reply) => {
     if (error instanceof AppError) {
+      app.log.warn(
+        {
+          details: error.details,
+          path: request.url,
+          statusCode: error.statusCode,
+        },
+        error.message,
+      );
       reply.code(error.statusCode).send({
         error: error.name,
         message: error.message,
