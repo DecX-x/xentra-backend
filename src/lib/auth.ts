@@ -111,7 +111,10 @@ function assertScopes(
 
   if (missingScopes.length > 0) {
     throw new AppError(403, message, {
+      audience: payload.aud,
+      grantedScopes: Array.from(grantedScopes),
       missingScopes,
+      subject: payload.sub,
     });
   }
 }
