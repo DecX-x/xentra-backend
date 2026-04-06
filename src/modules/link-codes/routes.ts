@@ -41,7 +41,7 @@ function toRuntimeIdentity(linkCode: {
 
 export async function linkCodeRoutes(app: FastifyInstance) {
   app.post("/link-codes/redeem", async (request) => {
-    const token = await requireUserToken(request, ["write:bindings"]);
+    const token = await requireUserToken(request);
     const user = await syncUserFromToken(prisma, token);
     const body = parseInput(redeemLinkCodeSchema, request.body);
     const code = normalizeLinkCode(body.code);

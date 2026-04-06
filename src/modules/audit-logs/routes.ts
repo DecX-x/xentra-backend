@@ -6,7 +6,7 @@ import { syncUserFromToken } from "../../lib/user-context.js";
 
 export async function auditLogRoutes(app: FastifyInstance) {
   app.get("/audit-logs", async (request) => {
-    const token = await requireUserToken(request, ["read:audit"]);
+    const token = await requireUserToken(request);
     const user = await syncUserFromToken(prisma, token);
 
     const auditLogs = await prisma.auditLog.findMany({

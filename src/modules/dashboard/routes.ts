@@ -11,7 +11,7 @@ import { syncUserFromToken } from "../../lib/user-context.js";
 
 export async function dashboardRoutes(app: FastifyInstance) {
   app.get("/dashboard/summary", async (request) => {
-    const token = await requireUserToken(request, ["read:dashboard"]);
+    const token = await requireUserToken(request);
     const user = await syncUserFromToken(prisma, token);
 
     const [activeAgents, activeIntegrations, pendingApprovals, auditLogs] =

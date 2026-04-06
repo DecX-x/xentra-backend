@@ -6,7 +6,7 @@ import { syncUserFromToken } from "../../lib/user-context.js";
 
 export async function integrationRoutes(app: FastifyInstance) {
   app.get("/integrations", async (request) => {
-    const token = await requireUserToken(request, ["read:providers"]);
+    const token = await requireUserToken(request);
     const user = await syncUserFromToken(prisma, token);
 
     const integrations = await prisma.connectedAccount.findMany({

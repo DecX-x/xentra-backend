@@ -22,7 +22,7 @@ const rejectApprovalSchema = z.object({
 
 export async function approvalRoutes(app: FastifyInstance) {
   app.get("/approvals", async (request) => {
-    const token = await requireUserToken(request, ["read:approvals"]);
+    const token = await requireUserToken(request);
     const user = await syncUserFromToken(prisma, token);
 
     const approvals = await prisma.approval.findMany({
@@ -50,7 +50,7 @@ export async function approvalRoutes(app: FastifyInstance) {
   });
 
   app.post("/approvals/:id/approve", async (request) => {
-    const token = await requireUserToken(request, ["write:approvals"]);
+    const token = await requireUserToken(request);
     const user = await syncUserFromToken(prisma, token);
     const params = parseInput(approvalParamsSchema, request.params);
 
@@ -114,7 +114,7 @@ export async function approvalRoutes(app: FastifyInstance) {
   });
 
   app.post("/approvals/:id/reject", async (request) => {
-    const token = await requireUserToken(request, ["write:approvals"]);
+    const token = await requireUserToken(request);
     const user = await syncUserFromToken(prisma, token);
     const params = parseInput(approvalParamsSchema, request.params);
     const body = parseInput(rejectApprovalSchema, request.body);
