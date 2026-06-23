@@ -77,7 +77,7 @@ Unlike human users who use Auth0, agent runtimes use a specialized linking flow 
 2. **Human Redemption:** The runtime presents this code to the human user (e.g., in a CLI or chat interface), who logs into the Xentra web app and redeems it.
 3. **Status Polling:** Meanwhile, the runtime polls `POST /api/v1/runtime/status` with the link code.
 4. **Token Issuance:** Once the human approves the code, the polling endpoint returns a `runtimeToken` (signed by Xentra).
-5. **Authenticated Execution:** The runtime uses this token in the `Authorization: ****** header for subsequent calls, such as `POST /api/v1/runtime/execute`.
+5. **Authenticated Execution:** The runtime uses this token in the `Authorization` header for subsequent calls, such as `POST /api/v1/runtime/execute`.
 
 ## Docker Deployment
 
